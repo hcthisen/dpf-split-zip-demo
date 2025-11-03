@@ -30,6 +30,13 @@ uvicorn app.main:app --reload
 
 The API will be available at `http://127.0.0.1:8000` by default.
 
+### Environment variables
+
+| Variable              | Default | Description |
+| --------------------- | ------- | ----------- |
+| `PDF_CLEANUP_SECONDS` | `3600`  | Number of seconds to keep generated PDFs before cleanup. |
+| `PORT`                | `8000`  | Listening port. Many platforms (including Coolify) inject their own value. |
+
 ## Usage
 
 1. Send a `POST` request to `http://127.0.0.1:8000/pdf-split` with a JSON body such as:
@@ -53,7 +60,34 @@ The API will be available at `http://127.0.0.1:8000` by default.
 
 3. Download links are valid for 60 minutes. Set the `PDF_CLEANUP_SECONDS` environment variable to adjust the retention period if needed.
 
+## Deployment
+
+### Docker
+
+Build the container image locally:
+
+```bash
+docker build -t pdf-split:latest .
+```
+
+Run the container:
+
+```bash
+docker run --rm -p 8000:8000 -e PORT=8000 -e PDF_CLEANUP_SECONDS=3600 pdf-split:latest
+```
+
+The API will be available at `http://127.0.0.1:8000`.
+
+### Coolify
+
+1. Create a new **Service ➜ Application** in Coolify and choose **Git Repository** as the deployment source.
+2. Point Coolify at this repository and select the branch you want to deploy.
+3. When prompted for the build strategy, choose **Docker** and keep the default Dockerfile path (`Dockerfile`).
+4. Under **Environment Variables**, add any overrides you need (for example `PDF_CLEANUP_SECONDS`). Coolify automatically injects the `PORT` variable that the container honours.
+5. Add a persistent storage mount (e.g. `/app/storage`) if you want to retain generated PDFs between container restarts.
+6. Trigger the deployment. Once the container is running, Coolify will proxy requests to the exposed port.
+
 ## Notes
 
-- The application stores temporary files in the `storage/` directory. Each request receives a unique identifier that is appended to generated file names to avoid collisions.
+- The application stores temporary files in the `storage/` directory. Each request receives a unique identifier that is appended to generated file names to avoid collisions. Mount the directory to persistent storage in production if you need to retain files across deployments.
 - For production usage, consider placing the application behind a reverse proxy that serves static files efficiently.
