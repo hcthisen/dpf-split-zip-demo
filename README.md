@@ -5,8 +5,9 @@ This project provides a small FastAPI application that downloads a multi-page PD
 ## Features
 
 - **Health check** available at `/`.
-- **Split endpoint** at `/pdf-split` that accepts a JSON body with a `"pdf-url"` property pointing to a publicly accessible PDF.
+- **Split endpoint** at `/pdf-split` that accepts either a JSON body with a `"pdf-url"` property pointing to a publicly accessible PDF **or** raw PDF binary data in the request body.
 - **Public download links** returned for every generated page under `/files/{request-id}/...`.
+- **Zip endpoint** at `/pdf-split-zip` that splits the PDF into single-page PDFs, then returns a downloadable zip containing all generated pages.
 - **Automatic cleanup** removes generated files after 60 minutes (configurable via the `PDF_CLEANUP_SECONDS` environment variable).
 
 ## Getting started
@@ -39,13 +40,17 @@ The API will be available at `http://127.0.0.1:8000` by default.
 
 ## Usage
 
-1. Send a `POST` request to `http://127.0.0.1:8000/pdf-split` with a JSON body such as:
+1. Send a `POST` request to `http://127.0.0.1:8000/pdf-split` with either:
 
-   ```json
-   {
-     "pdf-url": "https://example.com/sample.pdf"
-   }
-   ```
+   - A JSON body such as:
+
+     ```json
+     {
+       "pdf-url": "https://example.com/sample.pdf"
+     }
+     ```
+
+   - Or raw PDF binary data (for example `curl -X POST --data-binary @sample.pdf http://127.0.0.1:8000/pdf-split`).
 
 2. The response contains a `files` array of public URLs that each serve a single PDF page:
 
@@ -58,7 +63,10 @@ The API will be available at `http://127.0.0.1:8000` by default.
    }
    ```
 
-3. Download links are valid for 60 minutes. Set the `PDF_CLEANUP_SECONDS` environment variable to adjust the retention period if needed.
+3. To receive a zip containing the split pages, send the same JSON or binary payload to `http://127.0.0.1:8000/pdf-split-zip`.
+   The response includes a single `zip` URL pointing to the archive of all generated pages.
+
+4. Download links are valid for 60 minutes. Set the `PDF_CLEANUP_SECONDS` environment variable to adjust the retention period if needed.
 
 ## Deployment
 

@@ -3,6 +3,7 @@ import os
 import uuid
 from pathlib import Path
 from typing import List
+from zipfile import ZipFile
 
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
@@ -26,6 +27,31 @@ async def download_pdf(url: str, destination: Path) -> None:
             raise HTTPException(status_code=400, detail=f"Failed to download PDF: {exc}") from exc
 
     destination.write_bytes(response.content)
+
+
+async def save_pdf_from_request(request: Request, session_dir: Path) -> Path:
+    temp_file = session_dir / "source.pdf"
+    content_type = request.headers.get("content-type", "")
+
+    if "application/json" in content_type:
+        try:
+            payload = await request.json()
+        except Exception as exc:  # pylint: disable=broad-except
+            raise HTTPException(status_code=400, detail="Invalid JSON payload") from exc
+
+        pdf_url = payload.get("pdf-url")
+        if not pdf_url:
+            raise HTTPException(status_code=400, detail="'pdf-url' is required")
+
+        await download_pdf(pdf_url, temp_file)
+        return temp_file
+
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="PDF binary data is required in the request body")
+
+    temp_file.write_bytes(body)
+    return temp_file
 
 
 def split_pdf(source: Path, output_dir: Path, prefix: str) -> List[Path]:
@@ -68,17 +94,11 @@ async def health_check() -> JSONResponse:
 
 @app.post("/pdf-split")
 async def pdf_split(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
-    payload = await request.json()
-    pdf_url = payload.get("pdf-url")
-    if not pdf_url:
-        raise HTTPException(status_code=400, detail="'pdf-url' is required")
-
     unique_id = uuid.uuid4().hex
     session_dir = STORAGE_DIR / unique_id
     session_dir.mkdir(exist_ok=True)
 
-    temp_file = session_dir / "source.pdf"
-    await download_pdf(pdf_url, temp_file)
+    temp_file = await save_pdf_from_request(request, session_dir)
 
     prefix = temp_file.stem + f"_{unique_id}"
     split_paths = split_pdf(temp_file, session_dir, prefix)
@@ -90,6 +110,31 @@ async def pdf_split(request: Request, background_tasks: BackgroundTasks) -> JSON
     urls = [f"{base_url}/files/{unique_id}/{path.name}" for path in split_paths]
 
     return JSONResponse({"files": urls})
+
+
+@app.post("/pdf-split-zip")
+async def pdf_split_zip(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
+    unique_id = uuid.uuid4().hex
+    session_dir = STORAGE_DIR / unique_id
+    session_dir.mkdir(exist_ok=True)
+
+    temp_file = await save_pdf_from_request(request, session_dir)
+
+    prefix = temp_file.stem + f"_{unique_id}"
+    split_paths = split_pdf(temp_file, session_dir, prefix)
+
+    zip_path = session_dir / f"{prefix}.zip"
+    with ZipFile(zip_path, "w") as archive:
+        for page_path in split_paths:
+            archive.write(page_path, arcname=page_path.name)
+
+    delete_delay = int(os.environ.get("PDF_CLEANUP_SECONDS", "3600"))
+    background_tasks.add_task(delete_folder_later, session_dir, delete_delay)
+
+    base_url = str(request.base_url).rstrip("/")
+    zip_url = f"{base_url}/files/{unique_id}/{zip_path.name}"
+
+    return JSONResponse({"zip": zip_url})
 
 
 if __name__ == "__main__":
