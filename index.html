@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF to N8N Splitter</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        /* Custom animations */
+        @keyframes pulse-ring {
+            0% { transform: scale(0.8); opacity: 0.5; }
+            100% { transform: scale(2); opacity: 0; }
+        }
+        .loading-ring::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 0;
+            width: 100%; height: 100%;
+            background-color: rgba(59, 130, 246, 0.5);
+            border-radius: 50%;
+            z-index: -1;
+            animation: pulse-ring 1.5s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+        }
+        .drop-active {
+            border-color: #3b82f6;
+            background-color: #eff6ff;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col font-sans">
+
+    <!-- Main Container -->
+    <main class="flex-grow container mx-auto px-4 py-8 max-w-2xl">
+        
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <div class="bg-blue-600 w-16 h-16 rounded-2xl mx-auto flex items-center justify-center shadow-lg mb-4">
+                <i data-lucide="file-json" class="text-white w-8 h-8"></i>
+            </div>
+            <h1 class="text-3xl font-bold text-slate-900">PDF Splitter Client</h1>
+            <p class="text-slate-500 mt-2">Upload a PDF, process via Webhook, download the ZIP.</p>
+        </div>
+
+        <!-- Configuration Card -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6">
+            <label class="block text-sm font-medium text-slate-700 mb-2 flex items-center gap-2">
+                <i data-lucide="webhook" class="w-4 h-4"></i>
+                N8N Webhook URL (POST)
+            </label>
+            <input type="url" id="webhookUrl" 
+                placeholder="https://n8n.your-domain.com/webhook/..."
+                class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all text-sm"
+            >
+            <p class="text-xs text-slate-400 mt-2">
+                URL is saved automatically. Webhook should return JSON like <code>{"dl-url": "https://..."}</code>.
+            </p>
+        </div>
+
+        <!-- Upload Area -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            
+            <!-- Drop Zone -->
+            <div id="dropZone" class="border-2 border-dashed border-slate-300 rounded-xl p-8 text-center transition-all cursor-pointer hover:border-blue-400 hover:bg-slate-50 group relative">
+                <input type="file" id="fileInput" accept="application/pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10">
+                
+                <div class="flex flex-col items-center justify-center pointer-events-none">
+                    <div class="w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
+                        <i data-lucide="upload-cloud" class="w-6 h-6"></i>
+                    </div>
+                    <h3 class="text-lg font-medium text-slate-700">Drop your PDF here</h3>
+                    <p class="text-sm text-slate-400 mt-1">or click to browse (Max 10MB rec.)</p>
+                </div>
+            </div>
+
+            <!-- Selected File Preview -->
+            <div id="filePreview" class="hidden mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between">
+                <div class="flex items-center gap-3 overflow-hidden">
+                    <div class="bg-red-100 p-2 rounded-lg text-red-600 shrink-0">
+                        <i data-lucide="file-text" class="w-5 h-5"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <p id="fileName" class="text-sm font-medium text-slate-700 truncate">filename.pdf</p>
+                        <p id="fileSize" class="text-xs text-slate-500">0 KB</p>
+                    </div>
+                </div>
+                <button id="removeFileBtn" class="p-2 hover:bg-slate-200 rounded-full text-slate-400 hover:text-red-500 transition-colors">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <!-- Action Button -->
+            <button id="processBtn" disabled class="w-full mt-6 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-medium py-3 px-4 rounded-lg transition-all flex items-center justify-center gap-2 shadow-md hover:shadow-lg">
+                <span>Process & Download ZIP</span>
+                <i data-lucide="arrow-right" class="w-4 h-4"></i>
+            </button>
+
+            <!-- Loading State -->
+            <div id="loadingState" class="hidden mt-6 text-center py-4">
+                <div class="relative inline-flex items-center justify-center w-12 h-12 loading-ring mb-3">
+                    <i data-lucide="loader-2" class="w-6 h-6 text-blue-600 animate-spin"></i>
+                </div>
+                <p class="text-slate-700 font-medium">Processing PDF...</p>
+                <p class="text-sm text-slate-500 mt-1">Uploading, Splitting, and Zipping. Please wait.</p>
+            </div>
+
+            <!-- Error Message -->
+            <div id="errorMessage" class="hidden mt-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-start gap-2">
+                <i data-lucide="alert-circle" class="w-5 h-5 shrink-0 mt-0.5"></i>
+                <span id="errorText">Error details here...</span>
+            </div>
+
+            <!-- Success Message -->
+            <div id="successMessage" class="hidden mt-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm flex items-start gap-2">
+                <i data-lucide="check-circle-2" class="w-5 h-5 shrink-0 mt-0.5"></i>
+                <span>
+                    Success! Your download should start automatically.
+                    <a id="manualDownloadLink" href="#" target="_blank" class="hidden ml-1 underline font-semibold">
+                        Click here if it doesn't.
+                    </a>
+                </span>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="text-center p-6 text-xs text-slate-400">
+        <p>Client-side processing only. No data is stored on this server.</p>
+    </footer>
+
+    <script>
+        // --- Icons Init ---
+        lucide.createIcons();
+
+        // --- Elements ---
+        const webhookInput = document.getElementById('webhookUrl');
+        const fileInput = document.getElementById('fileInput');
+        const dropZone = document.getElementById('dropZone');
+        const filePreview = document.getElementById('filePreview');
+        const fileNameEl = document.getElementById('fileName');
+        const fileSizeEl = document.getElementById('fileSize');
+        const removeFileBtn = document.getElementById('removeFileBtn');
+        const processBtn = document.getElementById('processBtn');
+        const loadingState = document.getElementById('loadingState');
+        const errorMessage = document.getElementById('errorMessage');
+        const errorText = document.getElementById('errorText');
+        const successMessage = document.getElementById('successMessage');
+        const manualDownloadLink = document.getElementById('manualDownloadLink');
+
+        // --- State ---
+        let selectedFile = null;
+        let base64Content = null;
+
+        // --- Initialization ---
+        const savedUrl = localStorage.getItem('n8n_webhook_url');
+        if (savedUrl) webhookInput.value = savedUrl;
+
+        webhookInput.addEventListener('input', (e) => {
+            localStorage.setItem('n8n_webhook_url', e.target.value);
+            updateButtonState();
+        });
+
+        // --- File Handling ---
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('drop-active'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('drop-active'), false);
+        });
+
+        dropZone.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        }
+
+        fileInput.addEventListener('change', function() {
+            handleFiles(this.files);
+        });
+
+        function handleFiles(files) {
+            if (files.length > 0) {
+                const file = files[0];
+                
+                if (file.type !== 'application/pdf') {
+                    showError("Please upload a PDF file.");
+                    return;
+                }
+
+                selectedFile = file;
+                updateFileUI(file);
+                readFileAsBase64(file);
+            }
+        }
+
+        function updateFileUI(file) {
+            fileNameEl.textContent = file.name;
+            fileSizeEl.textContent = formatBytes(file.size);
+            filePreview.classList.remove('hidden');
+            hideError();
+            hideSuccess();
+            updateButtonState();
+        }
+
+        function formatBytes(bytes, decimals = 2) {
+            if (!+bytes) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+        }
+
+        function readFileAsBase64(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const rawResult = e.target.result;
+                base64Content = rawResult.split(',')[1];
+                updateButtonState();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        removeFileBtn.addEventListener('click', () => {
+            selectedFile = null;
+            base64Content = null;
+            fileInput.value = '';
+            filePreview.classList.add('hidden');
+            updateButtonState();
+        });
+
+        function updateButtonState() {
+            if (selectedFile && base64Content && webhookInput.value) {
+                processBtn.disabled = false;
+            } else {
+                processBtn.disabled = true;
+            }
+        }
+
+        function showError(msg) {
+            loadingState.classList.add('hidden');
+            successMessage.classList.add('hidden');
+            manualDownloadLink.classList.add('hidden');
+            errorMessage.classList.remove('hidden');
+            errorText.textContent = msg;
+        }
+
+        function hideError() {
+            errorMessage.classList.add('hidden');
+        }
+        
+        function hideSuccess() {
+            successMessage.classList.add('hidden');
+            manualDownloadLink.classList.add('hidden');
+        }
+
+        // --- Main Process ---
+        processBtn.addEventListener('click', async () => {
+            if (!selectedFile || !webhookInput.value) return;
+
+            // UI Updates
+            processBtn.disabled = true;
+            processBtn.classList.add('opacity-50');
+            loadingState.classList.remove('hidden');
+            hideError();
+            hideSuccess();
+            filePreview.classList.add('opacity-50');
+
+            try {
+                const payload = {
+                    filename: selectedFile.name,
+                    mimeType: selectedFile.type,
+                    data: base64Content
+                };
+
+                const response = await fetch(webhookInput.value, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Webhook returned ${response.status}: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                console.log('Webhook JSON result:', result);
+
+                const dlUrl = result['dl-url'];
+
+                if (!dlUrl || typeof dlUrl !== 'string') {
+                    throw new Error('Webhook response missing "dl-url" property.');
+                }
+
+                // Auto download via navigation
+                window.location.href = dlUrl;
+
+                // Show manual fallback link
+                manualDownloadLink.href = dlUrl;
+                manualDownloadLink.classList.remove('hidden');
+
+                // Success state
+                successMessage.classList.remove('hidden');
+
+            } catch (err) {
+                console.error(err);
+                showError("Failed to process: " + err.message);
+            } finally {
+                loadingState.classList.add('hidden');
+                processBtn.disabled = false;
+                processBtn.classList.remove('opacity-50');
+                filePreview.classList.remove('opacity-50');
+            }
+        });
+    </script>
+</body>
+</html>
