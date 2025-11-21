@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from PyPDF2 import PdfReader, PdfWriter
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 STORAGE_DIR = Path("storage")
 STORAGE_DIR.mkdir(exist_ok=True)
 
@@ -90,7 +90,7 @@ async def delete_folder_later(folder: Path, delay_seconds: int) -> None:
 
 @app.get("/")
 async def serve_index() -> FileResponse:
-    index_path = ROOT_DIR / "index.html"
+    index_path = STATIC_DIR / "index.html"
     if not index_path.exists():
         raise HTTPException(status_code=500, detail="Index file not found")
     return FileResponse(index_path)
