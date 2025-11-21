@@ -313,11 +313,18 @@
                     throw new Error('Webhook response missing "dl-url" property.');
                 }
 
-                // Auto download via navigation
-                window.location.href = dlUrl;
+                // Auto-start download via temporary anchor
+                const tempLink = document.createElement('a');
+                tempLink.href = dlUrl;
+                tempLink.download = '';
+                tempLink.target = '_blank';
+                document.body.appendChild(tempLink);
+                tempLink.click();
+                tempLink.remove();
 
                 // Show manual fallback link
                 manualDownloadLink.href = dlUrl;
+                manualDownloadLink.setAttribute('download', '');
                 manualDownloadLink.classList.remove('hidden');
 
                 // Success state
