@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import List
 from zipfile import ZipFile
 
+from urllib.parse import urlsplit, urlunsplit
+
 import httpx
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -88,6 +90,12 @@ async def delete_folder_later(folder: Path, delay_seconds: int) -> None:
         pass
 
 
+def build_https_base_url(request: Request) -> str:
+    split = urlsplit(str(request.base_url))
+    https_base = urlunsplit(("https", split.netloc, split.path.rstrip("/"), "", ""))
+    return https_base.rstrip("/")
+
+
 @app.get("/")
 async def serve_index() -> FileResponse:
     index_path = STATIC_DIR / "index.html"
@@ -115,7 +123,7 @@ async def pdf_split(request: Request, background_tasks: BackgroundTasks) -> JSON
     delete_delay = int(os.environ.get("PDF_CLEANUP_SECONDS", "3600"))
     background_tasks.add_task(delete_folder_later, session_dir, delete_delay)
 
-    base_url = str(request.base_url).rstrip("/")
+    base_url = build_https_base_url(request)
     urls = [f"{base_url}/files/{unique_id}/{path.name}" for path in split_paths]
 
     return JSONResponse({"files": urls})
@@ -140,7 +148,7 @@ async def pdf_split_zip(request: Request, background_tasks: BackgroundTasks) -> 
     delete_delay = int(os.environ.get("PDF_CLEANUP_SECONDS", "3600"))
     background_tasks.add_task(delete_folder_later, session_dir, delete_delay)
 
-    base_url = str(request.base_url).rstrip("/")
+    base_url = build_https_base_url(request)
     zip_url = f"{base_url}/files/{unique_id}/{zip_path.name}"
 
     return JSONResponse({"zip": zip_url})
