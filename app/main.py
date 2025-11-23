@@ -121,12 +121,16 @@ async def serve_index(_: HTTPBasicCredentials = Depends(verify_password)) -> Fil
 
 
 @app.get("/health")
-async def health_check() -> JSONResponse:
+async def health_check(_: HTTPBasicCredentials = Depends(verify_password)) -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
 @app.post("/pdf-split")
-async def pdf_split(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
+async def pdf_split(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    _: HTTPBasicCredentials = Depends(verify_password),
+) -> JSONResponse:
     unique_id = uuid.uuid4().hex
     session_dir = STORAGE_DIR / unique_id
     session_dir.mkdir(exist_ok=True)
@@ -146,7 +150,11 @@ async def pdf_split(request: Request, background_tasks: BackgroundTasks) -> JSON
 
 
 @app.post("/pdf-split-zip")
-async def pdf_split_zip(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
+async def pdf_split_zip(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    _: HTTPBasicCredentials = Depends(verify_password),
+) -> JSONResponse:
     unique_id = uuid.uuid4().hex
     session_dir = STORAGE_DIR / unique_id
     session_dir.mkdir(exist_ok=True)
