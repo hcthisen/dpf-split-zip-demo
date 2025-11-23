@@ -8,9 +8,10 @@ from zipfile import ZipFile
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from PyPDF2 import PdfReader, PdfWriter
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -19,6 +20,21 @@ STORAGE_DIR.mkdir(exist_ok=True)
 
 app = FastAPI(title="PDF Splitter API")
 app.mount("/files", StaticFiles(directory=STORAGE_DIR), name="files")
+
+security = HTTPBasic()
+
+
+def verify_password(credentials: HTTPBasicCredentials = Depends(security)) -> None:
+    configured_password = os.environ.get("PASSWORD")
+    if configured_password is None:
+        raise HTTPException(status_code=500, detail="Password is not configured")
+
+    if credentials.password != configured_password:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
 
 
 async def download_pdf(url: str, destination: Path) -> None:
@@ -97,7 +113,7 @@ def build_https_base_url(request: Request) -> str:
 
 
 @app.get("/")
-async def serve_index() -> FileResponse:
+async def serve_index(_: HTTPBasicCredentials = Depends(verify_password)) -> FileResponse:
     index_path = STATIC_DIR / "index.html"
     if not index_path.exists():
         raise HTTPException(status_code=500, detail="Index file not found")
